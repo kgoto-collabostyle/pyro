@@ -1,0 +1,13 @@
+[package]
+name = "pyroc-bin"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+pyroc = { path = "../pyroc" }
+pyrorts = { path = "../pyrorts" }
+clap = { version = "4", features = ["derive"] }
+
+[[bin]]
+name = "pyro"
+path = "src/main.rs"

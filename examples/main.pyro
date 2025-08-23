@@ -1,0 +1,3 @@
+letpr a = 2
+letpr b = 15
+print(a + b * 4)
