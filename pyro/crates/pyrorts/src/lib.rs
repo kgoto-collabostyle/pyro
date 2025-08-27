@@ -2,33 +2,54 @@ use pyroc::{BinOp, Expr, Module, Stmt};
 
 pub fn generate(m: &Module) -> String {
     let mut body = String::new();
-
     for stmt in &m.stmts {
-        match *stmt {
-            // Pyro独自: 変数宣言 `letpr`
-            Stmt::Let { ref name, ref expr } => {
-                body.push_str(&format!("let {} = {};\n", name, expr_to_rust(expr)));
-            }
+        body.push_str(&generate_stmt(stmt));
+    }
+    format!("fn main() {{\n{}\n}}\n", indent(&body, 4))
+}
 
-            // 組み込み: print(expr)
-            Stmt::Expr(Expr::Call {
-                ref callee,
-                ref args,
-            }) if callee == "print" => {
-                if let Some(arg) = args.get(0) {
-                    let expr_rs = expr_to_rust(arg);
-                    body.push_str(&format!("println!(\"{{}}\", {});\n", expr_rs));
-                } else {
-                    body.push_str("println!(\"<print: missing arg>\");\n");
+// ステートメント単位のコード生成（mainはここでは作らない）
+fn generate_stmt(stmt: &Stmt) -> String {
+    let mut code = String::new();
+    match stmt {
+        // print(...) を特別扱いして出力
+        Stmt::Expr(Expr::Call { callee, args }) if callee == "print" => {
+            if let Some(arg) = args.get(0) {
+                code.push_str(&format!("println!(\"{{}}\", {});\n", expr_to_rust(arg)));
+            } else {
+                code.push_str("println!(\"<print: missing arg>\");\n");
+            }
+        }
+
+        // それ以外の式文は現状 no-op
+        Stmt::Expr(_) => { /* no-op */ }
+
+        // 変数宣言 letpr
+        Stmt::Let { name, expr } => {
+            code.push_str(&format!("let {} = {};\n", name, expr_to_rust(expr)));
+        }
+
+        // if 文（数値として 0 以外を真とみなす）
+        Stmt::If {
+            cond,
+            then_block,
+            else_block,
+        } => {
+            code.push_str(&format!("if ({} as f64) != 0.0 {{\n", expr_to_rust(cond)));
+            for s in then_block {
+                code.push_str(&indent(&generate_stmt(s), 4));
+            }
+            code.push_str("}\n");
+            if !else_block.is_empty() {
+                code.push_str("else {\n");
+                for s in else_block {
+                    code.push_str(&indent(&generate_stmt(s), 4));
                 }
+                code.push_str("}\n");
             }
-
-            // それ以外の式文は現状は無視（必要なら評価コードを生成する）
-            Stmt::Expr(_) => { /* no-op */ }
         }
     }
-
-    format!("fn main(){{\n{}\n}}\n", indent(&body, 4))
+    code
 }
 
 fn expr_to_rust(e: &Expr) -> String {
@@ -47,6 +68,7 @@ fn expr_to_rust(e: &Expr) -> String {
             };
             format!("({} {} {})", l, op_str, r)
         }
+        // ここは未使用（print は Stmt 側で処理するため）
         Expr::Call { .. } => "\"<unsupported call>\"".to_string(),
     }
 }

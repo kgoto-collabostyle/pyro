@@ -1,9 +1,9 @@
 use clap::{Parser, Subcommand};
+use pyroc::parser::Parser as PyroParser;
+use pyrorts::generate;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
-use pyroc::parser::Parser as PyroParser;
-use pyrorts::generate;
 
 #[derive(Parser)]
 #[command(name = "pyro")]

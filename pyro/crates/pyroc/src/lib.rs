@@ -27,7 +27,15 @@ pub enum Expr {
 #[derive(Debug, Clone)]
 pub enum Stmt {
     Expr(Expr),
-    Let { name: String, expr: Expr },
+    Let {
+        name: String,
+        expr: Expr,
+    },
+    If {
+        cond: Expr,
+        then_block: Vec<Stmt>,
+        else_block: Vec<Stmt>,
+    },
 }
 
 #[derive(Debug, Clone)]

@@ -15,6 +15,10 @@ enum Tok {
     Newline,
     Eof,
     Eq,
+    LBrace,
+    RBrace, // '{' '}'
+    If,
+    Else, // keywords
 }
 
 struct Lexer<'a> {
@@ -71,6 +75,8 @@ impl<'a> Lexer<'a> {
             Some('(') => Ok(Tok::LParen),
             Some(')') => Ok(Tok::RParen),
             Some(',') => Ok(Tok::Comma),
+            Some('{') => Ok(Tok::LBrace),
+            Some('}') => Ok(Tok::RBrace),
             Some('+') => Ok(Tok::Plus),
             Some('-') => Ok(Tok::Minus),
             Some('*') => Ok(Tok::Star),
@@ -88,7 +94,14 @@ impl<'a> Lexer<'a> {
                         break;
                     }
                 }
-                Ok(Tok::Ident(s))
+                // ★ Ok(...) は 1 回だけ
+                Ok(match s.as_str() {
+                    "if" => Tok::If,
+                    "else" => Tok::Else,
+                    // letpr は専用トークンにせず Ident("letpr") として扱う
+                    "letpr" => Tok::Ident("letpr".into()),
+                    _ => Tok::Ident(s),
+                })
             }
             Some(c) if c.is_ascii_digit() => {
                 let mut s = String::new();
@@ -184,6 +197,35 @@ impl<'a> Parser<'a> {
                 self.bump();
                 continue;
             }
+
+            if matches!(self.at(), Tok::If) {
+                self.bump(); // 'if'
+                let cond = self.parse_expr(0)?;
+                // '{'
+                if !matches!(self.at(), Tok::LBrace) {
+                    return Err("expected '{' after if condition".into());
+                }
+                self.bump();
+                let then_block = self.parse_block_stmts()?;
+                // else は任意
+                let mut else_block = Vec::new();
+                if matches!(self.at(), Tok::Else) {
+                    self.bump(); // 'else'
+                    if !matches!(self.at(), Tok::LBrace) {
+                        return Err("expected '{' after else".into());
+                    }
+                    self.bump();
+                    else_block = self.parse_block_stmts()?;
+                }
+                stmts.push(Stmt::If {
+                    cond,
+                    then_block,
+                    else_block,
+                });
+                self.eat_newlines();
+                continue;
+            }
+
             // letpr 文の処理
             if let Tok::Ident(ref s) = self.at() {
                 if s == "letpr" {
@@ -210,6 +252,72 @@ impl<'a> Parser<'a> {
             self.eat_newlines();
         }
         Ok(Module { stmts })
+    }
+
+    // NEW: ブロック本文（ { の直後で呼び出される想定）
+    fn parse_block_stmts(&mut self) -> Result<Vec<Stmt>, String> {
+        let mut block = Vec::new();
+        self.eat_newlines();
+        while !matches!(self.at(), Tok::RBrace | Tok::Eof) {
+            if matches!(self.at(), Tok::Newline) {
+                self.bump();
+                continue;
+            }
+            // ネストした if/let/expr も parse_module と同じ規則で読む
+            if matches!(self.at(), Tok::If) {
+                // 再帰的に if を読むため一時的にモジュール相当を使わず直書き（上の if と同じ）
+                self.bump(); // 'if'
+                let cond = self.parse_expr(0)?;
+                if !matches!(self.at(), Tok::LBrace) {
+                    return Err("expected '{' after if condition".into());
+                }
+                self.bump();
+                let then_block = self.parse_block_stmts()?;
+                let mut else_block = Vec::new();
+                if matches!(self.at(), Tok::Else) {
+                    self.bump();
+                    if !matches!(self.at(), Tok::LBrace) {
+                        return Err("expected '{' after else".into());
+                    }
+                    self.bump();
+                    else_block = self.parse_block_stmts()?;
+                }
+                block.push(Stmt::If {
+                    cond,
+                    then_block,
+                    else_block,
+                });
+                self.eat_newlines();
+                continue;
+            }
+            if let Tok::Ident(ref s) = self.at() {
+                if s == "letpr" {
+                    self.bump();
+                    let name = if let Tok::Ident(n) = self.at().clone() {
+                        self.bump();
+                        n
+                    } else {
+                        return Err("expected identifier after letpr".into());
+                    };
+                    if !matches!(self.at(), Tok::Eq) {
+                        return Err("expected '=' after identifier".into());
+                    }
+                    self.bump();
+                    let expr = self.parse_expr(0)?;
+                    block.push(Stmt::Let { name, expr });
+                    self.eat_newlines();
+                    continue;
+                }
+            }
+            let e = self.parse_expr(0)?;
+            block.push(Stmt::Expr(e));
+            self.eat_newlines();
+        }
+        if !matches!(self.at(), Tok::RBrace) {
+            return Err("expected '}' to close block".into());
+        }
+        self.bump(); // '}'
+        Ok(block)
     }
 
     // 優先順位: * / (20) > + - (10)（左結合）

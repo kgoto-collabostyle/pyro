@@ -1,3 +1,13 @@
-letpr a = 2
-letpr b = 15
-print(a + b * 4)
+letpr x = 3
+if x {
+    print("x is truthy！！！")
+} else {
+    print("x is falsy")
+}
+
+letpr y = 0
+if y {
+    print("y is truthy")
+} else {
+    print("y is falsy")
+}
